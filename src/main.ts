@@ -7,6 +7,7 @@ import { runEngine, type EngineResult } from './engine.js';
 import { closeIssue } from './finish.js';
 import { renderForm, type Layout } from './form.js';
 import { readInputs } from './inputs.js';
+import { SlackNotifier, type QuestionInfo } from './slack.js';
 import { formatMarker, sweep, type Marker } from './sweep.js';
 import { emptyFields, parseTemplate, renderTemplate } from './template.js';
 import type { Status, Values } from './types.js';
@@ -113,6 +114,19 @@ async function run(): Promise<void> {
   core.notice(`Waiting for an answer in ${created.url}`, { title: `suii: ${title}` });
   core.info(`Answer here: ${created.url} (expires in ${Math.round(inputs.timeoutSec / 60)} min)`);
 
+  const slack = new SlackNotifier(inputs.slack, (m) => core.warning(m));
+  const question: QuestionInfo = {
+    title,
+    issueUrl: created.url,
+    issueNumber,
+    repo: `${inputs.issueOwner}/${inputs.issueRepo}`,
+    actor: context.actor,
+    runUrl,
+    expiresAt: new Date(deadline),
+  };
+  const slackRef = await slack.opened(question);
+  if (slack.enabled) core.saveState('slack', JSON.stringify({ question, ref: slackRef }));
+
   const auth = new Authorizer(api, {
     minPermission: inputs.minPermission,
     allowedUsers: inputs.allowedUsers,
@@ -149,6 +163,7 @@ async function run(): Promise<void> {
       lock: inputs.lock,
       log: (m) => core.warning(m),
     });
+    await slack.closed(question, { status: 'error' }, slackRef);
     core.saveState('finalized', 'true');
     core.setOutput('status', 'error');
     throw e;
@@ -156,6 +171,8 @@ async function run(): Promise<void> {
 
   // 5. Close and report.
   await finish(api, issueNumber, layout, result, inputs.lock);
+  const by = result.status === 'answered' ? result.responder : result.status === 'cancelled' ? result.by : null;
+  await slack.closed(question, { status: result.status, by }, slackRef);
   core.saveState('finalized', 'true');
   core.setOutput('status', result.status);
   await summary(result, created.url, title);

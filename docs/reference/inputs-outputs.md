@@ -22,6 +22,10 @@
 | `on-empty` | `skip` | `fail`: fail when a required field has no option, instead of succeeding with `status=empty`. |
 | `max-reverts` | `5` | Rejected edits tolerated before `status=contested`. |
 | `lock` | `true` | Lock the conversation once the issue is closed. |
+| `slack-webhook-url` | | Slack incoming webhook; see [Slack](/guide/slack). |
+| `slack-bot-token` | | Slack bot token (`chat:write`), used with `slack-channel`. |
+| `slack-channel` | | Channel ID or `#name` for `slack-bot-token`. |
+| `slack-mention` | | Put before the opening message, e.g. `<!here>`. |
 | `github-token` | `github.token` | Token used for every API call. |
 
 ## Outputs

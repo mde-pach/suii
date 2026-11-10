@@ -46,6 +46,9 @@ jobs:
           vars: environment=production
           timeout: ${{ inputs.timeout }}
           assignees: ${{ github.actor }}
+          slack-webhook-url: ${{ secrets.SUII_SLACK_WEBHOOK_URL }}
+          slack-bot-token: ${{ secrets.SUII_SLACK_BOT_TOKEN }}
+          slack-channel: ${{ vars.SUII_SLACK_CHANNEL }}
 
       - name: Use the answer
         env:

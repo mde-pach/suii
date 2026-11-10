@@ -23,6 +23,7 @@ A GitHub Action that pauses a step to ask people a question. It opens an issue f
 - **Five field types.** `choice`, `multi`, `confirm`, `rank` (drag to order) and `buckets` (drag into groups).
 - **Tamper-proof.** Values never come from the issue text. Every edit's author is checked, and any edit other than ticking boxes or dragging items is reverted.
 - **A record of every decision.** The issue is closed with the answer, who gave it and when.
+- **Slack notifications.** Optional: a message with a button when a question opens, updated with the outcome when it closes.
 
 ## Try it
 

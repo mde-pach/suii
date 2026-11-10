@@ -70,6 +70,18 @@ inputs:
     description: Lock the issue conversation once it is closed.
     required: false
     default: "true"
+  slack-webhook-url:
+    description: Slack incoming webhook. suii posts when the question opens and when it closes. Pass it from a secret.
+    required: false
+  slack-bot-token:
+    description: Slack bot token (chat:write) used instead of a webhook. The opening message is then updated in place when the question closes. Pass it from a secret.
+    required: false
+  slack-channel:
+    description: Channel for `slack-bot-token`, as an ID (C0123ABCD) or a name the bot has joined.
+    required: false
+  slack-mention:
+    description: Text put before the opening message, e.g. `<!here>`, `<@U0123ABC>` or `<!subteam^S0123ABC>`.
+    required: false
   github-token:
     description: Token used to create and watch the issue. Needs `issues:write` on `issue-repo`.
     required: false

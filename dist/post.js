@@ -20357,6 +20357,9 @@ var ExitCode;
   ExitCode2[ExitCode2["Success"] = 0] = "Success";
   ExitCode2[ExitCode2["Failure"] = 1] = "Failure";
 })(ExitCode || (ExitCode = {}));
+function setSecret(secret) {
+  issueCommand("add-mask", {}, secret);
+}
 function getInput(name, options) {
   const val = process.env[`INPUT_${name.replace(/ /g, "_").toUpperCase()}`] || "";
   if (options && options.required && !val) {
@@ -24868,6 +24871,142 @@ async function closeIssue(api, number, p) {
   }
 }
 
+// src/inputs.ts
+function readSlackInputs() {
+  const webhookUrl = getInput("slack-webhook-url");
+  const token = getInput("slack-bot-token");
+  const channel = getInput("slack-channel");
+  const mention = getInput("slack-mention");
+  if (webhookUrl) setSecret(webhookUrl);
+  if (token) setSecret(token);
+  if (token && !channel) throw new Error("Input `slack-bot-token` needs `slack-channel` (a channel ID like C0123ABCD, or #name).");
+  if (webhookUrl && !/^https:\/\/hooks\.slack\.com\//.test(webhookUrl)) {
+    throw new Error("Input `slack-webhook-url` must be a Slack incoming webhook (https://hooks.slack.com/...).");
+  }
+  return {
+    ...webhookUrl ? { webhookUrl } : {},
+    ...token ? { token } : {},
+    ...channel ? { channel } : {},
+    ...mention ? { mention } : {}
+  };
+}
+
+// src/slack.ts
+var SLACK_API = "https://slack.com/api";
+function slackText(value) {
+  return value.replace(/​/g, "").replace(/\\([\\`*_{}[\]()#+\-!|<>~&.])/g, "$1").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function fmtTime2(d) {
+  return `${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+var OUTCOME_TEXT = {
+  answered: "\u2705 Answered",
+  defaulted: "\u23F1\uFE0F Expired, default values used",
+  cancelled: "\u{1F6D1} Cancelled",
+  expired: "\u23F1\uFE0F Expired without an answer",
+  contested: "\u26A0\uFE0F Stopped after too many rejected edits",
+  aborted: "\u{1F6D1} Aborted: the workflow run stopped",
+  error: "\u26A0\uFE0F Stopped on an error"
+};
+function openingMessage(q, mention) {
+  const title = slackText(q.title);
+  const details = [`<${q.issueUrl}|${slackText(q.repo)}#${q.issueNumber}>`];
+  if (q.actor) details.push(`requested by ${slackText(q.actor)}`);
+  if (q.expiresAt) details.push(`answer before ${fmtTime2(q.expiresAt)}`);
+  const lead = mention ? `${mention} ` : "";
+  return {
+    text: `${lead}Waiting for an answer: ${title} ${q.issueUrl}`,
+    blocks: [
+      { type: "section", text: { type: "mrkdwn", text: `${lead}*${title}*
+${details.join(" \xB7 ")}` } },
+      {
+        type: "actions",
+        elements: [
+          { type: "button", text: { type: "plain_text", text: "Answer on GitHub" }, url: q.issueUrl, style: "primary" },
+          ...q.runUrl ? [{ type: "button", text: { type: "plain_text", text: "Workflow run" }, url: q.runUrl }] : []
+        ]
+      }
+    ]
+  };
+}
+function closingMessage(q, o) {
+  const title = slackText(q.title);
+  const outcome = `${OUTCOME_TEXT[o.status]}${o.by ? ` by ${slackText(o.by)}` : ""}`;
+  return {
+    text: `${outcome}: ${title} ${q.issueUrl}`,
+    blocks: [
+      { type: "section", text: { type: "mrkdwn", text: `~${title}~
+${outcome} \xB7 <${q.issueUrl}|${slackText(q.repo)}#${q.issueNumber}>` } }
+    ]
+  };
+}
+var SlackNotifier = class {
+  constructor(opts, log = () => {
+  }, fetchImpl = globalThis.fetch) {
+    this.opts = opts;
+    this.log = log;
+    this.fetchImpl = fetchImpl;
+  }
+  opts;
+  log;
+  fetchImpl;
+  get enabled() {
+    return Boolean(this.opts.webhookUrl || this.opts.token && this.opts.channel);
+  }
+  async webhook(payload) {
+    const res = await this.fetchImpl(this.opts.webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error(`webhook answered HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  }
+  async api(method, payload) {
+    const res = await this.fetchImpl(`${SLACK_API}/${method}`, {
+      method: "POST",
+      headers: { "content-type": "application/json; charset=utf-8", authorization: `Bearer ${this.opts.token}` },
+      body: JSON.stringify(payload)
+    });
+    const body = JSON.parse(await res.text() || "{}");
+    if (!res.ok || body.ok !== true) throw new Error(`${method} failed: ${String(body.error ?? `HTTP ${res.status}`)}`);
+    return body;
+  }
+  /** Announce a new question. Returns where it was posted when the message can be updated later. */
+  async opened(q) {
+    if (!this.enabled) return null;
+    const msg = openingMessage(q, this.opts.mention);
+    try {
+      if (this.opts.token && this.opts.channel) {
+        const res = await this.api("chat.postMessage", { channel: this.opts.channel, unfurl_links: false, ...msg });
+        return { channel: String(res.channel), ts: String(res.ts) };
+      }
+      await this.webhook({ unfurl_links: false, ...msg });
+    } catch (e) {
+      this.log(`Slack: could not announce the question (${e.message}).`);
+    }
+    return null;
+  }
+  /** Report how the question ended: update the opening message when possible, else post a new one. */
+  async closed(q, o, ref) {
+    if (!this.enabled) return;
+    const msg = closingMessage(q, o);
+    try {
+      if (this.opts.token && ref) {
+        await this.api("chat.update", { channel: ref.channel, ts: ref.ts, ...msg });
+        await this.api("chat.postMessage", { channel: ref.channel, thread_ts: ref.ts, text: msg.text, unfurl_links: false });
+        return;
+      }
+      if (this.opts.token && this.opts.channel) {
+        await this.api("chat.postMessage", { channel: this.opts.channel, unfurl_links: false, ...msg });
+        return;
+      }
+      await this.webhook({ unfurl_links: false, ...msg });
+    } catch (e) {
+      this.log(`Slack: could not report the outcome (${e.message}).`);
+    }
+  }
+};
+
 // src/post.ts
 async function post() {
   const issue2 = Number(getState("issue"));
@@ -24894,6 +25033,12 @@ async function post() {
     lock: getState("lock") === "true",
     log: (m) => warning(m)
   });
+  const saved = getState("slack");
+  if (saved) {
+    const { question, ref } = JSON.parse(saved);
+    const slack = new SlackNotifier(readSlackInputs(), (m) => warning(m));
+    await slack.closed({ ...question, ...question.expiresAt ? { expiresAt: new Date(question.expiresAt) } : {} }, { status: "aborted" }, ref);
+  }
 }
 post().catch((e) => {
   warning(`suii post hook: ${e.message}`);

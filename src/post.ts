@@ -1,10 +1,12 @@
 // Post hook: runs after the step, even when the run was cancelled or the step was killed.
-// If the issue is still open, freeze it as aborted.
+// If the issue is still open, freeze it as aborted, and tell Slack.
 import * as core from '@actions/core';
 import { getOctokit } from '@actions/github';
 import { octokitApi } from './api.js';
 import { closeIssue } from './finish.js';
 import type { Layout } from './form.js';
+import { readSlackInputs } from './inputs.js';
+import { SlackNotifier, type QuestionInfo, type SlackRef } from './slack.js';
 
 async function post(): Promise<void> {
   const issue = Number(core.getState('issue'));
@@ -31,6 +33,13 @@ async function post(): Promise<void> {
     lock: core.getState('lock') === 'true',
     log: (m) => core.warning(m),
   });
+
+  const saved = core.getState('slack');
+  if (saved) {
+    const { question, ref } = JSON.parse(saved) as { question: QuestionInfo & { expiresAt?: string }; ref: SlackRef | null };
+    const slack = new SlackNotifier(readSlackInputs(), (m) => core.warning(m));
+    await slack.closed({ ...question, ...(question.expiresAt ? { expiresAt: new Date(question.expiresAt) } : {}) }, { status: 'aborted' }, ref);
+  }
 }
 
 post().catch((e: unknown) => {

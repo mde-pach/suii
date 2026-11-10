@@ -28,6 +28,7 @@ export default defineConfig({
           { text: 'Getting started', link: '/guide/getting-started' },
           { text: 'Templates', link: '/guide/templates' },
           { text: 'Field types', link: '/guide/field-types' },
+          { text: 'Slack', link: '/guide/slack' },
           { text: 'How it works', link: '/guide/how-it-works' },
           { text: 'Security', link: '/guide/security' },
         ],

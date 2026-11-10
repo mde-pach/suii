@@ -3,6 +3,7 @@ import * as core from '@actions/core';
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { ROLES, type Role } from './auth.js';
+import type { SlackOptions } from './slack.js';
 
 export interface Inputs {
   templateText: string;
@@ -25,6 +26,27 @@ export interface Inputs {
   maxReverts: number;
   lock: boolean;
   token: string;
+  slack: SlackOptions;
+}
+
+/** Slack settings, also read by the post hook. */
+export function readSlackInputs(): SlackOptions {
+  const webhookUrl = core.getInput('slack-webhook-url');
+  const token = core.getInput('slack-bot-token');
+  const channel = core.getInput('slack-channel');
+  const mention = core.getInput('slack-mention');
+  if (webhookUrl) core.setSecret(webhookUrl);
+  if (token) core.setSecret(token);
+  if (token && !channel) throw new Error('Input `slack-bot-token` needs `slack-channel` (a channel ID like C0123ABCD, or #name).');
+  if (webhookUrl && !/^https:\/\/hooks\.slack\.com\//.test(webhookUrl)) {
+    throw new Error('Input `slack-webhook-url` must be a Slack incoming webhook (https://hooks.slack.com/...).');
+  }
+  return {
+    ...(webhookUrl ? { webhookUrl } : {}),
+    ...(token ? { token } : {}),
+    ...(channel ? { channel } : {}),
+    ...(mention ? { mention } : {}),
+  };
 }
 
 export function list(value: string): string[] {
@@ -109,5 +131,6 @@ export function readInputs(): Inputs {
     maxReverts: int('max-reverts', 0),
     lock: core.getBooleanInput('lock'),
     token: core.getInput('github-token', { required: true }),
+    slack: readSlackInputs(),
   };
 }
