@@ -1,6 +1,6 @@
 # Sort open issues into groups by dragging them under a heading.
 title: "Weekly triage: {{ data.issues | size }} open issues"
-intro: Drag each issue under the group it belongs to, then tick **Apply**. suii labels them accordingly.
+intro: Drag each issue under the group it belongs to, then tick **Apply**. The workflow receives the groups and can label or close the issues.
 fields:
   - id: triage
     type: buckets
