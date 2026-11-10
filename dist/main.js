@@ -37176,13 +37176,20 @@ function renderForm(form, meta) {
     blank();
     switch (field.type) {
       case "confirm":
-        layout.push({ kind: "check", text: `${box(field.default)}Yes`, role: { kind: "confirm", field: field.id } });
+        layout.push({
+          kind: "set",
+          name: `field \`${field.id}\``,
+          lines: [{ text: `${box(field.default)}Yes`, role: { kind: "confirm", field: field.id } }]
+        });
         break;
       case "choice":
       case "multi":
-        field.options.forEach((o, index) => {
-          if (o.disabled) st(`- ~~${o.label}~~ \xB7 *unavailable*`);
-          else layout.push({ kind: "check", text: `${box(o.default)}${o.label}`, role: { kind: "option", field: field.id, index } });
+        layout.push({
+          kind: "set",
+          name: `field \`${field.id}\``,
+          lines: field.options.map(
+            (o, index) => o.disabled ? { text: `- ~~${o.label}~~ \xB7 *unavailable*`, role: null } : { text: `${box(o.default)}${o.label}`, role: { kind: "option", field: field.id, index } }
+          )
         });
         break;
       case "rank": {
@@ -37206,27 +37213,31 @@ function renderForm(form, meta) {
         break;
       }
     }
-    const last = layout[layout.length - 1];
-    if (last?.kind === "group") {
-      const seen = /* @__PURE__ */ new Set();
-      for (const l of last.lines) {
-        if (seen.has(canonical(l.text))) {
-          throw new Error(`Field \`${field.id}\`: two lines render identically (\`${l.text}\`); make labels unique.`);
-        }
-        seen.add(canonical(l.text));
-      }
-    }
   }
   blank();
   st("---", true);
   st("", true);
-  layout.push({ kind: "check", text: `- [ ] **${form.submitLabel}**`, role: { kind: "submit" } });
-  if (form.cancel) layout.push({ kind: "check", text: `- [ ] ${form.cancelLabel}`, role: { kind: "cancel" } });
+  const actions = [{ text: `- [ ] **${form.submitLabel}**`, role: { kind: "submit" } }];
+  if (form.cancel) actions.push({ text: `- [ ] ${form.cancelLabel}`, role: { kind: "cancel" } });
+  layout.push({ kind: "set", name: "the Submit / Cancel list", lines: actions });
   st("", true);
+  const dragging = form.fields.some((f) => f.type === "rank" || f.type === "buckets");
   st(
-    "<sub>Tick your answers, then tick <b>" + escapeMarkdown(form.submitLabel) + "</b>. Only people allowed by the workflow can answer. Edits other than ticking boxes and dragging list items are reverted.</sub>",
+    "<sub>Tick your answers, then tick <b>" + escapeMarkdown(form.submitLabel) + "</b>. Only people allowed by the workflow can answer. " + (dragging ? "Dragging items only matters in the lists that ask for it. " : "The order of the lines does not matter. ") + "Any other edit is reverted.</sub>",
     true
   );
+  for (const e of layout) {
+    if (e.kind === "static") continue;
+    const seen = /* @__PURE__ */ new Set();
+    for (const l of e.lines) {
+      const c = canonical(l.text);
+      if (seen.has(c)) {
+        const where = e.kind === "group" ? `Field \`${e.field}\`` : e.name.charAt(0).toUpperCase() + e.name.slice(1);
+        throw new Error(`${where}: two lines render identically (\`${l.text}\`); make labels unique.`);
+      }
+      seen.add(c);
+    }
+  }
   const body = layoutLines(layout).join("\n") + "\n";
   if (body.length > MAX_BODY) {
     throw new Error(`The rendered issue is ${body.length} characters, over the ${MAX_BODY} limit. Reduce the options (e.g. with \`limit\`).`);
@@ -37236,10 +37247,22 @@ function renderForm(form, meta) {
 function layoutLines(layout) {
   const out = [];
   for (const e of layout) {
-    if (e.kind === "group") out.push(...e.lines.map((l) => l.text));
-    else out.push(e.text);
+    if (e.kind === "static") out.push(e.text);
+    else out.push(...e.lines.map((l) => l.text));
   }
   return out;
+}
+function matchList(current, rendered, startLine, what) {
+  const byText = new Map(rendered.map((r) => [canonical(r.text), r.value]));
+  const used = /* @__PURE__ */ new Set();
+  return current.map((line, k) => {
+    const c = canonical(line);
+    if (!byText.has(c) || used.has(c)) {
+      throw new TamperError(`line ${startLine + k + 1} does not belong to ${what}`);
+    }
+    used.add(c);
+    return { value: byText.get(c), line };
+  });
 }
 function readForm(body, layout) {
   const lines = normalizeLines(body);
@@ -37252,24 +37275,22 @@ function readForm(body, layout) {
   let i = 0;
   for (const entry of layout) {
     if (entry.kind === "group") {
-      const byText = new Map(entry.lines.map((l) => [canonical(l.text), l.ref]));
-      const order = [];
-      const used = /* @__PURE__ */ new Set();
-      for (let k = 0; k < entry.lines.length; k++, i++) {
-        const c = canonical(lines[i] ?? "");
-        const ref = byText.get(c);
-        if (!ref || used.has(c)) throw new TamperError(`line ${i + 1} does not belong to field \`${entry.field}\``);
-        used.add(c);
-        order.push(ref);
-      }
-      groups.set(entry.field, order);
+      const current = lines.slice(i, i + entry.lines.length);
+      const matched = matchList(current, entry.lines.map((l) => ({ text: l.text, value: l.ref })), i, `field \`${entry.field}\``);
+      groups.set(entry.field, matched.map((m) => m.value));
+      i += entry.lines.length;
       continue;
     }
-    const line = lines[i] ?? "";
-    if (canonical(line) !== canonical(entry.text)) {
+    if (entry.kind === "set") {
+      const current = lines.slice(i, i + entry.lines.length);
+      const matched = matchList(current, entry.lines.map((l) => ({ text: l.text, value: l.role })), i, entry.name);
+      for (const m of matched) if (m.value) checks.set(roleKey(m.value), isChecked(m.line));
+      i += entry.lines.length;
+      continue;
+    }
+    if (canonical(lines[i] ?? "") !== canonical(entry.text)) {
       throw new TamperError(`line ${i + 1} was changed`);
     }
-    if (entry.kind === "check") checks.set(roleKey(entry.role), isChecked(line));
     i++;
   }
   return { checks, groups };
@@ -37279,14 +37300,21 @@ function setCheck(body, layout, role, checked) {
   const key = roleKey(role);
   let i = 0;
   for (const entry of layout) {
-    if (entry.kind === "group") {
-      i += entry.lines.length;
+    if (entry.kind === "static") {
+      i++;
       continue;
     }
-    if (entry.kind === "check" && roleKey(entry.role) === key && lines[i] !== void 0) {
-      lines[i] = canonical(lines[i]).replace(CHECKBOX, checked ? "$1[x]" : "$1[ ]");
+    if (entry.kind === "set") {
+      const target = entry.lines.find((l) => l.role && roleKey(l.role) === key);
+      if (target) {
+        for (let k = i; k < i + entry.lines.length; k++) {
+          if (lines[k] !== void 0 && canonical(lines[k]) === canonical(target.text)) {
+            lines[k] = canonical(lines[k]).replace(CHECKBOX, checked ? "$1[x]" : "$1[ ]");
+          }
+        }
+      }
     }
-    i++;
+    i += entry.lines.length;
   }
   return lines.join("\n") + "\n";
 }
@@ -37379,14 +37407,21 @@ function freezeBody(body, layout, status, detail) {
       }
       continue;
     }
-    const line = lines[i] ?? entry.text;
-    i++;
-    if (entry.kind === "static") {
-      if (!entry.footer) out.push(line);
+    if (entry.kind === "set") {
+      const ticked = new Set(
+        lines.slice(i, i + entry.lines.length).filter(isChecked).map(canonical)
+      );
+      i += entry.lines.length;
+      for (const l of entry.lines) {
+        if (l.role?.kind === "submit" || l.role?.kind === "cancel") continue;
+        if (!l.role) out.push(l.text);
+        else out.push(canonical(l.text).replace(/^(\s*[-*+]\s+)\[ \]/, ticked.has(canonical(l.text)) ? "$1\u2705" : "$1\u2B1C"));
+      }
       continue;
     }
-    if (entry.role.kind === "submit" || entry.role.kind === "cancel") continue;
-    out.push(canonical(line).replace(/^(\s*[-*+]\s+)\[ \]/, isChecked(line) ? "$1\u2705" : "$1\u2B1C"));
+    const line = lines[i] ?? entry.text;
+    i++;
+    if (!entry.footer) out.push(line);
   }
   while (out.length && out[out.length - 1] === "") out.pop();
   if (out[out.length - 1] === "---") out.pop();

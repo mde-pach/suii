@@ -24706,10 +24706,22 @@ function fmtTime(d) {
 function layoutLines(layout) {
   const out = [];
   for (const e of layout) {
-    if (e.kind === "group") out.push(...e.lines.map((l) => l.text));
-    else out.push(e.text);
+    if (e.kind === "static") out.push(e.text);
+    else out.push(...e.lines.map((l) => l.text));
   }
   return out;
+}
+function matchList(current, rendered, startLine, what) {
+  const byText = new Map(rendered.map((r) => [canonical(r.text), r.value]));
+  const used = /* @__PURE__ */ new Set();
+  return current.map((line, k) => {
+    const c = canonical(line);
+    if (!byText.has(c) || used.has(c)) {
+      throw new TamperError(`line ${startLine + k + 1} does not belong to ${what}`);
+    }
+    used.add(c);
+    return { value: byText.get(c), line };
+  });
 }
 function readForm(body, layout) {
   const lines = normalizeLines(body);
@@ -24722,24 +24734,22 @@ function readForm(body, layout) {
   let i = 0;
   for (const entry of layout) {
     if (entry.kind === "group") {
-      const byText = new Map(entry.lines.map((l) => [canonical(l.text), l.ref]));
-      const order = [];
-      const used = /* @__PURE__ */ new Set();
-      for (let k = 0; k < entry.lines.length; k++, i++) {
-        const c = canonical(lines[i] ?? "");
-        const ref = byText.get(c);
-        if (!ref || used.has(c)) throw new TamperError(`line ${i + 1} does not belong to field \`${entry.field}\``);
-        used.add(c);
-        order.push(ref);
-      }
-      groups.set(entry.field, order);
+      const current = lines.slice(i, i + entry.lines.length);
+      const matched = matchList(current, entry.lines.map((l) => ({ text: l.text, value: l.ref })), i, `field \`${entry.field}\``);
+      groups.set(entry.field, matched.map((m) => m.value));
+      i += entry.lines.length;
       continue;
     }
-    const line = lines[i] ?? "";
-    if (canonical(line) !== canonical(entry.text)) {
+    if (entry.kind === "set") {
+      const current = lines.slice(i, i + entry.lines.length);
+      const matched = matchList(current, entry.lines.map((l) => ({ text: l.text, value: l.role })), i, entry.name);
+      for (const m of matched) if (m.value) checks.set(roleKey(m.value), isChecked(m.line));
+      i += entry.lines.length;
+      continue;
+    }
+    if (canonical(lines[i] ?? "") !== canonical(entry.text)) {
       throw new TamperError(`line ${i + 1} was changed`);
     }
-    if (entry.kind === "check") checks.set(roleKey(entry.role), isChecked(line));
     i++;
   }
   return { checks, groups };
@@ -24772,14 +24782,21 @@ function freezeBody(body, layout, status, detail) {
       }
       continue;
     }
-    const line = lines[i] ?? entry.text;
-    i++;
-    if (entry.kind === "static") {
-      if (!entry.footer) out.push(line);
+    if (entry.kind === "set") {
+      const ticked = new Set(
+        lines.slice(i, i + entry.lines.length).filter(isChecked).map(canonical)
+      );
+      i += entry.lines.length;
+      for (const l of entry.lines) {
+        if (l.role?.kind === "submit" || l.role?.kind === "cancel") continue;
+        if (!l.role) out.push(l.text);
+        else out.push(canonical(l.text).replace(/^(\s*[-*+]\s+)\[ \]/, ticked.has(canonical(l.text)) ? "$1\u2705" : "$1\u2B1C"));
+      }
       continue;
     }
-    if (entry.role.kind === "submit" || entry.role.kind === "cancel") continue;
-    out.push(canonical(line).replace(/^(\s*[-*+]\s+)\[ \]/, isChecked(line) ? "$1\u2705" : "$1\u2B1C"));
+    const line = lines[i] ?? entry.text;
+    i++;
+    if (!entry.footer) out.push(line);
   }
   while (out.length && out[out.length - 1] === "") out.pop();
   if (out[out.length - 1] === "---") out.pop();

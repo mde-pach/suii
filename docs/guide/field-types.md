@@ -2,6 +2,8 @@
 
 suii only uses what GitHub issues support natively: checkboxes that can be ticked in place, and task-list items that can be reordered by drag and drop.
 
+GitHub makes every task-list item draggable, in every field. For `choice`, `multi` and `confirm`, and for Submit and Cancel, suii ignores the order, so a drag there is harmless. Only `rank` and `buckets` read the order.
+
 | Type | How people answer | Output |
 | --- | --- | --- |
 | `choice` | tick exactly one option | the option's value, e.g. `prod` |

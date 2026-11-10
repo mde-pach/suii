@@ -1,6 +1,6 @@
 # Security
 
-An answer counts only if every edit since the last accepted state was made by an allowed person and changed nothing but checkbox marks and the order of draggable lists.
+An answer counts only if every edit since the last accepted state was made by an allowed person and changed nothing but checkbox marks and the order of lines within their own list.
 
 ## Who can answer
 
@@ -18,7 +18,7 @@ For a production deployment, combine suii with a protected [environment](https:/
 
 ## What people can change
 
-Values never come from the issue text. The runner keeps the mapping from each line to its value; the issue only carries checkbox marks and the order of draggable lines. So:
+Values never come from the issue text. The runner keeps the mapping from each line to its value; the issue only carries checkbox marks, and the order of lines in `rank` and `buckets` fields. So:
 
 - adding an option, rewording a label or editing the intro is detected and reverted;
 - a crafted line in your data, such as `- [ ] **Submit**`, cannot become a checkbox: values are escaped, and lines are read by position anyway;

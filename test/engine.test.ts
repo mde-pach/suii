@@ -133,6 +133,22 @@ describe('engine', () => {
     expect(r).toMatchObject({ status: 'answered', values: { env: 'staging' } });
   });
 
+  it('does not revert or comment when someone drags a checkbox within its list', async () => {
+    const swap = (b: string) => {
+      const lines = b.split('\n');
+      const s = lines.findIndex((l) => l.endsWith('**Submit**'));
+      [lines[s], lines[s + 1]] = [lines[s + 1]!, lines[s]!];
+      return lines.join('\n');
+    };
+    const gh = new FakeGitHub({
+      2: (g) => g.humanEdit('alice', swap),
+      4: (g) => g.humanEdit('alice', (b) => tick('**Submit**')(tick('Production')(b))),
+    });
+    const r = await run(gh);
+    expect(gh.comments).toEqual([]);
+    expect(r).toMatchObject({ status: 'answered', values: { env: 'prod' } });
+  });
+
   it('unticks Submit and explains when the answer is incomplete', async () => {
     const gh = new FakeGitHub({
       2: (g) => g.humanEdit('alice', tick('**Submit**')),

@@ -164,8 +164,20 @@ describe('tamper check', () => {
     expect(() => readForm(moveLine(body, '- [ ] eu', '- [ ] Bug 1'), layout)).toThrow(TamperError);
   });
 
-  it('rejects reordering a choice list', () => {
-    expect(() => readForm(moveLine(body, '- [ ] Production', '- [ ] Staging'), layout)).toThrow(TamperError);
+  it('ignores the order of checkbox lists, which GitHub always lets people drag', () => {
+    let b = moveLine(body, '- [ ] Production', '- [ ] Staging');
+    b = moveLine(b, '- [ ] Cancel', '- [ ] **Submit**');
+    b = tick(tick(b, 'Production'), '**Submit**');
+    const ev = evaluate(form, readForm(b, layout));
+    expect(ev.values.target).toBe('prod');
+    expect(ev.submit).toBe(true);
+    expect(ev.cancel).toBe(false);
+  });
+
+  it('rejects moving a line into another list', () => {
+    expect(() => readForm(moveLine(body, '- [ ] **Submit**', '- [ ] Staging'), layout)).toThrow(TamperError);
+    expect(() => readForm(moveLine(body, '- [ ] beta', '- [ ] Staging'), layout)).toThrow(/does not belong to field `target`/);
+    expect(() => readForm(moveLine(body, '- [ ] Staging', '- [ ] eu'), layout)).toThrow(TamperError);
   });
 
   it('rejects a removed marker or changed intro', () => {
@@ -181,12 +193,19 @@ describe('tamper check', () => {
 describe('helpers', () => {
   const { body, layout } = renderForm(form, meta);
 
-  it('unticks Submit without touching anything else', () => {
-    const b = tick(tick(body, 'Staging'), '**Submit**');
+  it('unticks Submit without touching anything else, even after a drag', () => {
+    const dragged = moveLine(body, '- [ ] Cancel', '- [ ] **Submit**');
+    const b = tick(tick(dragged, 'Staging'), '**Submit**');
     const after = setCheck(b, layout, { kind: 'submit' }, false);
     const ev = evaluate(form, readForm(after, layout));
     expect(ev.submit).toBe(false);
     expect(ev.values.target).toBe('staging');
+  });
+
+  it('freezes checkbox lists in their original order', () => {
+    const b = tick(moveLine(body, '- [ ] Production', '- [ ] Staging'), 'Production');
+    const frozen = freezeBody(b, layout, 'answered', {});
+    expect(frozen.indexOf('⬜ Staging')).toBeLessThan(frozen.indexOf('✅ Production'));
   });
 
   it('computes default values only when every required field has one', () => {

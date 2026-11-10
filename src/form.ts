@@ -1,12 +1,16 @@
 // Renders a Form into issue markdown, and reads it back.
 //
-// The issue body is described by a Layout: one entry per line, in order.
+// The issue body is described by a Layout: a sequence of entries, in order.
 // - static lines must come back unchanged (checkbox marks aside)
-// - check lines are read for their checkbox state, by position only
-// - group lines (rank / buckets fields) may be reordered by drag and drop,
-//   but must stay the same set of lines inside their own group
-// Values never come from the issue text: a line's meaning is its position in
-// the layout, and the layout lives on the runner.
+// - a set is one checkbox list (a choice / multi / confirm field, or Submit and
+//   Cancel). GitHub lets anyone with edit rights drag task-list items, and suii
+//   cannot turn that off, so a set's lines may come back in any order: order
+//   carries no meaning there and is ignored. Its lines are read for their mark.
+// - a group is the list of a rank / buckets field, where order is the answer.
+// Both sets and groups must keep exactly their own lines: anything added,
+// reworded, or moved into another list is tampering.
+// Values never come from the issue text: a line only selects one of the lines
+// suii rendered, and the meaning of each line lives on the runner.
 import { escapeMarkdown } from './escape.js';
 import type { Field, FieldValue, Form, Values } from './types.js';
 
@@ -20,7 +24,8 @@ export type GroupRef = { kind: 'option'; index: number } | { kind: 'bucket'; id:
 
 export type LayoutEntry =
   | { kind: 'static'; text: string; footer?: boolean }
-  | { kind: 'check'; text: string; role: CheckRole }
+  /** An unordered checkbox list. `role: null` is a line with no checkbox (a disabled option). */
+  | { kind: 'set'; name: string; lines: { text: string; role: CheckRole | null }[] }
   | { kind: 'group'; field: string; lines: { text: string; ref: GroupRef }[] };
 
 export type Layout = LayoutEntry[];
@@ -139,13 +144,22 @@ export function renderForm(form: Form, meta: Meta): { body: string; layout: Layo
     blank();
     switch (field.type) {
       case 'confirm':
-        layout.push({ kind: 'check', text: `${box(field.default)}Yes`, role: { kind: 'confirm', field: field.id } });
+        layout.push({
+          kind: 'set',
+          name: `field \`${field.id}\``,
+          lines: [{ text: `${box(field.default)}Yes`, role: { kind: 'confirm', field: field.id } }],
+        });
         break;
       case 'choice':
       case 'multi':
-        field.options.forEach((o, index) => {
-          if (o.disabled) st(`- ~~${o.label}~~ · *unavailable*`);
-          else layout.push({ kind: 'check', text: `${box(o.default)}${o.label}`, role: { kind: 'option', field: field.id, index } });
+        layout.push({
+          kind: 'set',
+          name: `field \`${field.id}\``,
+          lines: field.options.map((o, index) =>
+            o.disabled
+              ? { text: `- ~~${o.label}~~ · *unavailable*`, role: null }
+              : { text: `${box(o.default)}${o.label}`, role: { kind: 'option', field: field.id, index } as CheckRole },
+          ),
         });
         break;
       case 'rank': {
@@ -172,31 +186,40 @@ export function renderForm(form: Form, meta: Meta): { body: string; layout: Layo
         break;
       }
     }
-    // Lines inside one group must be distinguishable after a drag.
-    const last = layout[layout.length - 1];
-    if (last?.kind === 'group') {
-      const seen = new Set<string>();
-      for (const l of last.lines) {
-        if (seen.has(canonical(l.text))) {
-          throw new Error(`Field \`${field.id}\`: two lines render identically (\`${l.text}\`); make labels unique.`);
-        }
-        seen.add(canonical(l.text));
-      }
-    }
   }
 
   blank();
   st('---', true);
   st('', true);
-  layout.push({ kind: 'check', text: `- [ ] **${form.submitLabel}**`, role: { kind: 'submit' } });
-  if (form.cancel) layout.push({ kind: 'check', text: `- [ ] ${form.cancelLabel}`, role: { kind: 'cancel' } });
+  const actions: { text: string; role: CheckRole | null }[] = [{ text: `- [ ] **${form.submitLabel}**`, role: { kind: 'submit' } }];
+  if (form.cancel) actions.push({ text: `- [ ] ${form.cancelLabel}`, role: { kind: 'cancel' } });
+  layout.push({ kind: 'set', name: 'the Submit / Cancel list', lines: actions });
   st('', true);
+  const dragging = form.fields.some((f) => f.type === 'rank' || f.type === 'buckets');
   st(
     '<sub>Tick your answers, then tick <b>' +
       escapeMarkdown(form.submitLabel) +
-      '</b>. Only people allowed by the workflow can answer. Edits other than ticking boxes and dragging list items are reverted.</sub>',
+      '</b>. Only people allowed by the workflow can answer. ' +
+      (dragging
+        ? 'Dragging items only matters in the lists that ask for it. '
+        : 'The order of the lines does not matter. ') +
+      'Any other edit is reverted.</sub>',
     true,
   );
+
+  // A line is recognised by its text after a drag, so lines must be distinct within each list.
+  for (const e of layout) {
+    if (e.kind === 'static') continue;
+    const seen = new Set<string>();
+    for (const l of e.lines) {
+      const c = canonical(l.text);
+      if (seen.has(c)) {
+        const where = e.kind === 'group' ? `Field \`${e.field}\`` : e.name.charAt(0).toUpperCase() + e.name.slice(1);
+        throw new Error(`${where}: two lines render identically (\`${l.text}\`); make labels unique.`);
+      }
+      seen.add(c);
+    }
+  }
 
   const body = layoutLines(layout).join('\n') + '\n';
   if (body.length > MAX_BODY) {
@@ -209,10 +232,29 @@ export function renderForm(form: Form, meta: Meta): { body: string; layout: Layo
 export function layoutLines(layout: Layout): string[] {
   const out: string[] = [];
   for (const e of layout) {
-    if (e.kind === 'group') out.push(...e.lines.map((l) => l.text));
-    else out.push(e.text);
+    if (e.kind === 'static') out.push(e.text);
+    else out.push(...e.lines.map((l) => l.text));
   }
   return out;
+}
+
+/** Match a list's current lines to its rendered lines, in any order. Throws on any other change. */
+function matchList<T>(
+  current: string[],
+  rendered: { text: string; value: T }[],
+  startLine: number,
+  what: string,
+): { value: T; line: string }[] {
+  const byText = new Map(rendered.map((r) => [canonical(r.text), r.value] as const));
+  const used = new Set<string>();
+  return current.map((line, k) => {
+    const c = canonical(line);
+    if (!byText.has(c) || used.has(c)) {
+      throw new TamperError(`line ${startLine + k + 1} does not belong to ${what}`);
+    }
+    used.add(c);
+    return { value: byText.get(c) as T, line };
+  });
 }
 
 /**
@@ -231,25 +273,22 @@ export function readForm(body: string, layout: Layout): FormState {
   let i = 0;
   for (const entry of layout) {
     if (entry.kind === 'group') {
-      const byText = new Map(entry.lines.map((l) => [canonical(l.text), l.ref] as const));
-      const order: GroupRef[] = [];
-      const used = new Set<string>();
-      for (let k = 0; k < entry.lines.length; k++, i++) {
-        const c = canonical(lines[i] ?? '');
-        const ref = byText.get(c);
-        if (!ref || used.has(c)) throw new TamperError(`line ${i + 1} does not belong to field \`${entry.field}\``);
-        used.add(c);
-        order.push(ref);
-      }
-      groups.set(entry.field, order);
+      const current = lines.slice(i, i + entry.lines.length);
+      const matched = matchList(current, entry.lines.map((l) => ({ text: l.text, value: l.ref })), i, `field \`${entry.field}\``);
+      groups.set(entry.field, matched.map((m) => m.value));
+      i += entry.lines.length;
       continue;
     }
-    const line = lines[i] ?? '';
-    // Trailing blank lines were stripped from both sides; an empty expected line matches an empty one.
-    if (canonical(line) !== canonical(entry.text)) {
+    if (entry.kind === 'set') {
+      const current = lines.slice(i, i + entry.lines.length);
+      const matched = matchList(current, entry.lines.map((l) => ({ text: l.text, value: l.role })), i, entry.name);
+      for (const m of matched) if (m.value) checks.set(roleKey(m.value), isChecked(m.line));
+      i += entry.lines.length;
+      continue;
+    }
+    if (canonical(lines[i] ?? '') !== canonical(entry.text)) {
       throw new TamperError(`line ${i + 1} was changed`);
     }
-    if (entry.kind === 'check') checks.set(roleKey(entry.role), isChecked(line));
     i++;
   }
   return { checks, groups };
@@ -261,14 +300,22 @@ export function setCheck(body: string, layout: Layout, role: CheckRole, checked:
   const key = roleKey(role);
   let i = 0;
   for (const entry of layout) {
-    if (entry.kind === 'group') {
-      i += entry.lines.length;
+    if (entry.kind === 'static') {
+      i++;
       continue;
     }
-    if (entry.kind === 'check' && roleKey(entry.role) === key && lines[i] !== undefined) {
-      lines[i] = canonical(lines[i]!).replace(CHECKBOX, checked ? '$1[x]' : '$1[ ]');
+    if (entry.kind === 'set') {
+      const target = entry.lines.find((l) => l.role && roleKey(l.role) === key);
+      if (target) {
+        // The line may have been dragged: find it by its text within this list.
+        for (let k = i; k < i + entry.lines.length; k++) {
+          if (lines[k] !== undefined && canonical(lines[k]!) === canonical(target.text)) {
+            lines[k] = canonical(lines[k]!).replace(CHECKBOX, checked ? '$1[x]' : '$1[ ]');
+          }
+        }
+      }
     }
-    i++;
+    i += entry.lines.length;
   }
   return lines.join('\n') + '\n';
 }
@@ -395,14 +442,25 @@ export function freezeBody(
       }
       continue;
     }
-    const line = lines[i] ?? entry.text;
-    i++;
-    if (entry.kind === 'static') {
-      if (!entry.footer) out.push(line);
+    if (entry.kind === 'set') {
+      // Shown in the order suii rendered it, whatever order people dragged it into.
+      const ticked = new Set(
+        lines
+          .slice(i, i + entry.lines.length)
+          .filter(isChecked)
+          .map(canonical),
+      );
+      i += entry.lines.length;
+      for (const l of entry.lines) {
+        if (l.role?.kind === 'submit' || l.role?.kind === 'cancel') continue;
+        if (!l.role) out.push(l.text);
+        else out.push(canonical(l.text).replace(/^(\s*[-*+]\s+)\[ \]/, ticked.has(canonical(l.text)) ? '$1✅' : '$1⬜'));
+      }
       continue;
     }
-    if (entry.role.kind === 'submit' || entry.role.kind === 'cancel') continue;
-    out.push(canonical(line).replace(/^(\s*[-*+]\s+)\[ \]/, isChecked(line) ? '$1✅' : '$1⬜'));
+    const line = lines[i] ?? entry.text;
+    i++;
+    if (!entry.footer) out.push(line);
   }
   while (out.length && out[out.length - 1] === '') out.pop();
   if (out[out.length - 1] === '---') out.pop();
