@@ -37076,23 +37076,6 @@ var Authorizer = class {
   }
 };
 
-// src/escape.ts
-var ZWSP = "\u200B";
-function oneLine(value) {
-  return String(value ?? "").replace(/\s*[\r\n]+\s*/g, " ");
-}
-function escapeMarkdown(value) {
-  return oneLine(value).replace(/[\\`*_{}[\]()#+\-!|<>~&]/g, (c) => `\\${c}`).replace(/@/g, `@${ZWSP}`).replace(/\\#/g, `\\#${ZWSP}`);
-}
-function codeSpan(value) {
-  const text = oneLine(value);
-  if (text === "") return "` `";
-  const longest = Math.max(0, ...Array.from(text.matchAll(/`+/g), (m) => m[0].length));
-  const fence = "`".repeat(longest + 1);
-  const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
-  return `${fence}${pad}${text}${pad}${fence}`;
-}
-
 // src/form.ts
 var TamperError = class extends Error {
   name = "TamperError";
@@ -37166,20 +37149,22 @@ function renderForm(form, meta) {
     for (const line of normalizeLines(form.intro)) st(line);
   }
   for (const field of form.fields) {
+    const draggable = field.type === "rank" || field.type === "buckets";
     blank();
     st(`### ${field.label}`);
-    st(`<sub>${hint(field)}</sub>`);
+    if (draggable) st(`<sub>${hint(field)}</sub>`);
     if (field.description) {
       blank();
       for (const line of normalizeLines(field.description)) st(line);
     }
     blank();
+    const hintLine = { text: `- *${hint(field)}*`, role: null, hint: true };
     switch (field.type) {
       case "confirm":
         layout.push({
           kind: "set",
           name: `field \`${field.id}\``,
-          lines: [{ text: `${box(field.default)}Yes`, role: { kind: "confirm", field: field.id } }]
+          lines: [hintLine, { text: `${box(field.default)}Yes`, role: { kind: "confirm", field: field.id } }]
         });
         break;
       case "choice":
@@ -37187,9 +37172,12 @@ function renderForm(form, meta) {
         layout.push({
           kind: "set",
           name: `field \`${field.id}\``,
-          lines: field.options.map(
-            (o, index) => o.disabled ? { text: `- ~~${o.label}~~ \xB7 *unavailable*`, role: null } : { text: `${box(o.default)}${o.label}`, role: { kind: "option", field: field.id, index } }
-          )
+          lines: [
+            hintLine,
+            ...field.options.map(
+              (o, index) => o.disabled ? { text: `- ~~${o.label}~~ \xB7 *unavailable*`, role: null } : { text: `${box(o.default)}${o.label}`, role: { kind: "option", field: field.id, index } }
+            )
+          ]
         });
         break;
       case "rank": {
@@ -37217,13 +37205,15 @@ function renderForm(form, meta) {
   blank();
   st("---", true);
   st("", true);
-  const actions = [{ text: `- [ ] **${form.submitLabel}**`, role: { kind: "submit" } }];
+  const actions = [
+    { text: "- *When your answers are ticked:*", role: null, hint: true },
+    { text: `- [ ] **${form.submitLabel}**`, role: { kind: "submit" } }
+  ];
   if (form.cancel) actions.push({ text: `- [ ] ${form.cancelLabel}`, role: { kind: "cancel" } });
   layout.push({ kind: "set", name: "the Submit / Cancel list", lines: actions });
   st("", true);
-  const dragging = form.fields.some((f) => f.type === "rank" || f.type === "buckets");
   st(
-    "<sub>Tick your answers, then tick <b>" + escapeMarkdown(form.submitLabel) + "</b>. Only people allowed by the workflow can answer. " + (dragging ? "Dragging items only matters in the lists that ask for it. " : "The order of the lines does not matter. ") + "Any other edit is reverted.</sub>",
+    "<sub>Only people allowed by the workflow can answer. Any edit other than ticking boxes" + (form.fields.some((f) => f.type === "rank" || f.type === "buckets") ? " and dragging the lists that ask for it" : "") + " is reverted.</sub>",
     true
   );
   for (const e of layout) {
@@ -37428,7 +37418,7 @@ function freezeBody(body, layout, status, detail) {
       );
       i += entry.lines.length;
       for (const l of entry.lines) {
-        if (l.role?.kind === "submit" || l.role?.kind === "cancel") continue;
+        if (l.hint || l.role?.kind === "submit" || l.role?.kind === "cancel") continue;
         if (!l.role) out.push(l.text);
         else out.push(canonical(l.text).replace(/^(\s*[-*+]\s+)\[ \]/, ticked.has(canonical(l.text)) ? "$1\u2705" : "$1\u2B1C"));
       }
@@ -37787,6 +37777,25 @@ async function sweep(octokit, api, issueOwner, issueRepo, current, log) {
 // src/template.ts
 var import_liquidjs = __toESM(require_liquid_node(), 1);
 var import_yaml = __toESM(require_dist(), 1);
+
+// src/escape.ts
+var ZWSP = "\u200B";
+function oneLine(value) {
+  return String(value ?? "").replace(/\s*[\r\n]+\s*/g, " ");
+}
+function escapeMarkdown(value) {
+  return oneLine(value).replace(/[\\`*_{}[\]()#+\-!|<>~&]/g, (c) => `\\${c}`).replace(/@/g, `@${ZWSP}`).replace(/\\#/g, `\\#${ZWSP}`);
+}
+function codeSpan(value) {
+  const text = oneLine(value);
+  if (text === "") return "` `";
+  const longest = Math.max(0, ...Array.from(text.matchAll(/`+/g), (m) => m[0].length));
+  const fence = "`".repeat(longest + 1);
+  const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
+  return `${fence}${pad}${text}${pad}${fence}`;
+}
+
+// src/template.ts
 var TemplateError = class extends Error {
   name = "TemplateError";
 };

@@ -11,7 +11,6 @@
 // reworded, or moved into another list is tampering.
 // Values never come from the issue text: a line only selects one of the lines
 // suii rendered, and the meaning of each line lives on the runner.
-import { escapeMarkdown } from './escape.js';
 import type { Field, FieldValue, Form, Values } from './types.js';
 
 export type CheckRole =
@@ -24,8 +23,12 @@ export type GroupRef = { kind: 'option'; index: number } | { kind: 'bucket'; id:
 
 export type LayoutEntry =
   | { kind: 'static'; text: string; footer?: boolean }
-  /** An unordered checkbox list. `role: null` is a line with no checkbox (a disabled option). */
-  | { kind: 'set'; name: string; lines: { text: string; role: CheckRole | null }[] }
+  /**
+   * A checkbox list. `role: null` is a line with no checkbox: the list's leading
+   * hint (`hint: true`), or a disabled option. A plain item in a task list keeps
+   * GitHub from making the list draggable, so these lists stay in place.
+   */
+  | { kind: 'set'; name: string; lines: { text: string; role: CheckRole | null; hint?: boolean }[] }
   | { kind: 'group'; field: string; lines: { text: string; ref: GroupRef }[] };
 
 export type Layout = LayoutEntry[];
@@ -140,20 +143,24 @@ export function renderForm(form: Form, meta: Meta): { body: string; layout: Layo
   }
 
   for (const field of form.fields) {
+    const draggable = field.type === 'rank' || field.type === 'buckets';
     blank();
     st(`### ${field.label}`);
-    st(`<sub>${hint(field)}</sub>`);
+    // Draggable lists must contain only checkbox lines, so their hint sits above the list.
+    if (draggable) st(`<sub>${hint(field)}</sub>`);
     if (field.description) {
       blank();
       for (const line of normalizeLines(field.description)) st(line);
     }
     blank();
+    // Checkbox lists open with a plain item: it carries the hint and keeps the list from being draggable.
+    const hintLine = { text: `- *${hint(field)}*`, role: null, hint: true };
     switch (field.type) {
       case 'confirm':
         layout.push({
           kind: 'set',
           name: `field \`${field.id}\``,
-          lines: [{ text: `${box(field.default)}Yes`, role: { kind: 'confirm', field: field.id } }],
+          lines: [hintLine, { text: `${box(field.default)}Yes`, role: { kind: 'confirm', field: field.id } }],
         });
         break;
       case 'choice':
@@ -161,11 +168,14 @@ export function renderForm(form: Form, meta: Meta): { body: string; layout: Layo
         layout.push({
           kind: 'set',
           name: `field \`${field.id}\``,
-          lines: field.options.map((o, index) =>
-            o.disabled
-              ? { text: `- ~~${o.label}~~ · *unavailable*`, role: null }
-              : { text: `${box(o.default)}${o.label}`, role: { kind: 'option', field: field.id, index } as CheckRole },
-          ),
+          lines: [
+            hintLine,
+            ...field.options.map((o, index) =>
+              o.disabled
+                ? { text: `- ~~${o.label}~~ · *unavailable*`, role: null }
+                : { text: `${box(o.default)}${o.label}`, role: { kind: 'option', field: field.id, index } as CheckRole },
+            ),
+          ],
         });
         break;
       case 'rank': {
@@ -197,19 +207,17 @@ export function renderForm(form: Form, meta: Meta): { body: string; layout: Layo
   blank();
   st('---', true);
   st('', true);
-  const actions: { text: string; role: CheckRole | null }[] = [{ text: `- [ ] **${form.submitLabel}**`, role: { kind: 'submit' } }];
+  const actions: { text: string; role: CheckRole | null; hint?: boolean }[] = [
+    { text: '- *When your answers are ticked:*', role: null, hint: true },
+    { text: `- [ ] **${form.submitLabel}**`, role: { kind: 'submit' } },
+  ];
   if (form.cancel) actions.push({ text: `- [ ] ${form.cancelLabel}`, role: { kind: 'cancel' } });
   layout.push({ kind: 'set', name: 'the Submit / Cancel list', lines: actions });
   st('', true);
-  const dragging = form.fields.some((f) => f.type === 'rank' || f.type === 'buckets');
   st(
-    '<sub>Tick your answers, then tick <b>' +
-      escapeMarkdown(form.submitLabel) +
-      '</b>. Only people allowed by the workflow can answer. ' +
-      (dragging
-        ? 'Dragging items only matters in the lists that ask for it. '
-        : 'The order of the lines does not matter. ') +
-      'Any other edit is reverted.</sub>',
+    '<sub>Only people allowed by the workflow can answer. Any edit other than ticking boxes' +
+      (form.fields.some((f) => f.type === 'rank' || f.type === 'buckets') ? ' and dragging the lists that ask for it' : '') +
+      ' is reverted.</sub>',
     true,
   );
 
@@ -475,7 +483,7 @@ export function freezeBody(
       );
       i += entry.lines.length;
       for (const l of entry.lines) {
-        if (l.role?.kind === 'submit' || l.role?.kind === 'cancel') continue;
+        if (l.hint || l.role?.kind === 'submit' || l.role?.kind === 'cancel') continue;
         if (!l.role) out.push(l.text);
         else out.push(canonical(l.text).replace(/^(\s*[-*+]\s+)\[ \]/, ticked.has(canonical(l.text)) ? '$1✅' : '$1⬜'));
       }

@@ -2,7 +2,10 @@
 
 suii only uses what GitHub issues support natively: checkboxes that can be ticked in place, and task-list items that can be reordered by drag and drop.
 
-GitHub makes every task-list item draggable, in every field. For `choice`, `multi` and `confirm`, and for Submit and Cancel, suii ignores the order, so a drag there is harmless. Only `rank` and `buckets` read the order.
+Each field gets the controls it needs and no others:
+
+- `choice`, `multi`, `confirm`, and the Submit / Cancel list can be ticked but not dragged. Each list opens with a plain line (its hint), and GitHub does not make a list draggable when it contains a line without a checkbox.
+- `rank` and `buckets` can be dragged but not ticked. GitHub only makes a line draggable when it has a checkbox, so those lines show one, but suii unticks it at once.
 
 | Type | How people answer | Output |
 | --- | --- | --- |

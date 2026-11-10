@@ -24791,7 +24791,7 @@ function freezeBody(body, layout, status, detail) {
       );
       i += entry.lines.length;
       for (const l of entry.lines) {
-        if (l.role?.kind === "submit" || l.role?.kind === "cancel") continue;
+        if (l.hint || l.role?.kind === "submit" || l.role?.kind === "cancel") continue;
         if (!l.role) out.push(l.text);
         else out.push(canonical(l.text).replace(/^(\s*[-*+]\s+)\[ \]/, ticked.has(canonical(l.text)) ? "$1\u2705" : "$1\u2B1C"));
       }

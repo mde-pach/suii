@@ -86,6 +86,14 @@ describe('rendering', () => {
     expect(readForm(body, layout).checks.get('submit')).toBe(false);
   });
 
+  it('opens every checkbox list with a plain item, so GitHub does not make it draggable', () => {
+    expect(body).toContain('- *Pick one · required*\n- [ ] Staging');
+    expect(body).toContain('- *Must be ticked*\n- [ ] Yes');
+    expect(body).toContain('- *When your answers are ticked:*\n- [ ] **Submit**\n- [ ] Cancel');
+    // Draggable lists hold only checkbox lines.
+    expect(body).toContain('<sub>Drag the ⠿ handle to reorder · the top 2 count · these boxes cannot be ticked</sub>\n\n- [ ] eu');
+  });
+
   it('reads back an untouched body', () => {
     const ev = evaluate(form, readForm(body, layout));
     expect(ev.submit).toBe(false);
@@ -237,6 +245,8 @@ describe('helpers', () => {
     expect(frozen).toContain('- **▸ Later**\n  - Bug 2');
     expect(frozen).not.toContain('[ ]');
     expect(frozen).not.toContain('**Submit**');
+    expect(frozen).not.toContain('*Pick one');
+    expect(frozen).not.toContain('When your answers');
     expect(frozen).not.toContain('<sub>Tick');
   });
 

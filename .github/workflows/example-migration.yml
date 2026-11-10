@@ -7,7 +7,7 @@ on:
     inputs:
       timeout:
         description: Seconds to wait for an answer
-        default: "3600"
+        default: "900"
 
 permissions:
   contents: read
@@ -17,7 +17,7 @@ permissions:
 jobs:
   choose:
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 20
     outputs:
       revision: ${{ steps.ask.outputs.revision }}
     steps:

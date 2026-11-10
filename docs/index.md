@@ -45,14 +45,15 @@ The step opens an issue like this one, and waits:
 > Requested by @alice · [Deploy #42](…) · answer before 2026-11-10 15:12 UTC
 
 ### Target migration
-<sub>Pick one · required</sub>
 
+- *Pick one · required*
 - [ ] `8c2d4e6f1a3b` add orders table · code `1a2b3c4d`
 - [ ] `b7e1f0a9c8d2` add index on orders.created_at · code `2b3c4d5e`
 - ~~`4d5e6f7a8b9c` backfill order totals~~ · *unavailable*
 
 ---
 
+- *When your answers are ticked:*
 - [ ] **Deploy**
 - [ ] Cancel the deployment
 ```
