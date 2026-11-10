@@ -1,0 +1,42 @@
+# Example: sort items into groups by dragging them under headings (buckets).
+name: "Example: weekly triage"
+
+on:
+  workflow_dispatch:
+    inputs:
+      timeout:
+        description: Seconds to wait for an answer
+        default: "3600"
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Sort the issues
+        id: ask
+        uses: ./
+        with:
+          template: .github/suii/triage.yml
+          data: >-
+            {"issues": [
+              {"number": 101, "title": "Login fails with SSO on Safari"},
+              {"number": 102, "title": "Typo on the pricing page"},
+              {"number": 103, "title": "Export times out above 10k rows"},
+              {"number": 104, "title": "Add dark mode to emails"},
+              {"number": 105, "title": "Duplicate of 101"}
+            ]}
+          timeout: ${{ inputs.timeout }}
+          assignees: ${{ github.actor }}
+
+      - name: Apply
+        env:
+          TRIAGE: ${{ steps.ask.outputs.triage }}
+        run: echo "$TRIAGE" | jq .

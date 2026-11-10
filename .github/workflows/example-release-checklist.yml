@@ -1,0 +1,39 @@
+# Example: a go / no-go checklist before a release continues.
+name: "Example: release checklist"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version being released
+        default: "2.4.0"
+      timeout:
+        description: Seconds to wait for an answer
+        default: "3600"
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Go / no-go
+        id: ask
+        uses: ./
+        with:
+          template: .github/suii/release-checklist.yml
+          vars: version=${{ inputs.version }}
+          timeout: ${{ inputs.timeout }}
+          assignees: ${{ github.actor }}
+
+      - name: Ship
+        env:
+          TARGET: ${{ steps.ask.outputs.target }}
+          WHO: ${{ steps.ask.outputs.responder }}
+        run: echo "Shipping to $TARGET, approved by @$WHO"

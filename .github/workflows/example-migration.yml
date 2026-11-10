@@ -1,0 +1,66 @@
+# Example: choose the Alembic migration to deploy up to.
+# The plan below is simulated; examples/alembic/migration_plan.py produces the same JSON from a real database.
+name: "Example: choose a migration"
+
+on:
+  workflow_dispatch:
+    inputs:
+      timeout:
+        description: Seconds to wait for an answer
+        default: "3600"
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  choose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    outputs:
+      revision: ${{ steps.ask.outputs.revision }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Compute the migration plan (simulated)
+        run: |
+          cat > plan.json <<'EOF'
+          {
+            "current": "3f9a1c2e7b10",
+            "plan": [
+              { "revision": "8c2d4e6f1a3b", "message": "add orders table", "deploy_sha": "1a2b3c4d5e6f7a8b9c0d", "deployable": true },
+              { "revision": "b7e1f0a9c8d2", "message": "add index on orders.created_at", "deploy_sha": "2b3c4d5e6f7a8b9c0d1e", "deployable": true },
+              { "revision": "4d5e6f7a8b9c", "message": "backfill order totals", "deploy_sha": null, "deployable": false },
+              { "revision": "c1d2e3f4a5b6", "message": "drop legacy_orders", "deploy_sha": "3c4d5e6f7a8b9c0d1e2f", "deployable": true }
+            ]
+          }
+          EOF
+
+      - name: Ask which migration to stop at
+        id: ask
+        uses: ./
+        with:
+          template: .github/suii/choose-migration.yml
+          data-file: plan.json
+          vars: environment=production
+          timeout: ${{ inputs.timeout }}
+          assignees: ${{ github.actor }}
+
+      - name: Use the answer
+        env:
+          STATUS: ${{ steps.ask.outputs.status }}
+          REVISION: ${{ steps.ask.outputs.revision }}
+          SEED: ${{ steps.ask.outputs.seed }}
+          WHO: ${{ steps.ask.outputs.responder }}
+        run: |
+          echo "status=$STATUS"
+          echo "@$WHO chose to stop at $REVISION (seed: $SEED)"
+
+  deploy:
+    needs: choose
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          REVISION: ${{ needs.choose.outputs.revision }}
+        run: echo "alembic upgrade $REVISION  # then deploy the matching code"

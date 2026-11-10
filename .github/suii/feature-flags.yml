@@ -1,0 +1,22 @@
+# Pick which flags to turn on, from a list produced by an earlier step.
+title: "Feature flags to enable in {{ vars.environment }}"
+fields:
+  - id: flags
+    type: multi
+    label: Flags to turn on
+    description: Flags already on are not listed. Pick between 1 and 3.
+    min: 1
+    max: 3
+    options:
+      from: data.flags
+      if: item.enabled == false
+      label: "{{ item.key | code }} {{ item.description }} · owned by {{ item.owner }}"
+      value: "{{ item.key }}"
+  - id: percentage
+    type: choice
+    label: Rollout
+    options:
+      - { label: 10 % of users, value: "10", default: true }
+      - { label: 50 % of users, value: "50" }
+      - { label: Everyone, value: "100" }
+submit: Enable

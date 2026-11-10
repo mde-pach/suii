@@ -1,0 +1,13 @@
+# Rank regions by dragging them; the first three get the release, in that order.
+title: "Rollout order for {{ vars.version }}"
+intro: Drag the regions into the order they should receive the release. Only the first three get it today.
+fields:
+  - id: regions
+    type: rank
+    label: Regions
+    top: 3
+    options:
+      from: data.regions
+      label: "{{ item.name }} · {{ item.users }} users"
+      value: "{{ item.id }}"
+submit: Start the rollout

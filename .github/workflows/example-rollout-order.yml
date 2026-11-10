@@ -1,0 +1,46 @@
+# Example: rank items by dragging them (rank), keeping only the top three.
+name: "Example: rollout order"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version being rolled out
+        default: "2.4.0"
+      timeout:
+        description: Seconds to wait for an answer
+        default: "3600"
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  rollout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Rank the regions
+        id: ask
+        uses: ./
+        with:
+          template: .github/suii/rollout-order.yml
+          vars: version=${{ inputs.version }}
+          data: >-
+            {"regions": [
+              {"id": "eu-west", "name": "Europe West", "users": "1.2M"},
+              {"id": "us-east", "name": "US East", "users": "2.4M"},
+              {"id": "ap-south", "name": "Asia Pacific South", "users": "800k"},
+              {"id": "sa-east", "name": "South America East", "users": "300k"},
+              {"id": "af-south", "name": "Africa South", "users": "90k"}
+            ]}
+          timeout: ${{ inputs.timeout }}
+          assignees: ${{ github.actor }}
+
+      - name: Roll out
+        env:
+          REGIONS: ${{ steps.ask.outputs.regions }}
+        run: echo "$REGIONS" | jq -r 'to_entries[] | "\(.key + 1). \(.value)"'

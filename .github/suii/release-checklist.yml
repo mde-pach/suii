@@ -1,0 +1,25 @@
+# A go / no-go checklist: every box is required before the release continues.
+title: "Release {{ vars.version }}: go / no-go"
+intro: |
+  Release {{ vars.version | code }} is built and waiting. Confirm each point, pick where it goes, then tick **Ship it**.
+fields:
+  - id: target
+    type: choice
+    label: Where does it go?
+    options:
+      - { label: Staging only, value: staging, default: true }
+      - { label: Staging, then production, value: production }
+  - id: changelog
+    type: confirm
+    label: The changelog is reviewed
+    required: true
+  - id: migrations
+    type: confirm
+    label: Database migrations are backward-compatible
+    required: true
+  - id: oncall
+    type: confirm
+    label: On-call knows a release is going out
+    required: true
+submit: Ship it
+cancel: Stop the release

@@ -1,0 +1,19 @@
+# Pick the Alembic revision to stop at. Options are generated from the plan JSON.
+title: "Deploy {{ vars.environment }}: choose the migration to stop at"
+intro: |
+  The database is at {{ data.current | code }}.
+  Each option deploys the code as it was right before the next migration was added.
+fields:
+  - id: revision
+    type: choice
+    label: Target migration
+    options:
+      from: data.plan
+      label: "{{ item.revision | code }} {{ item.message }}{% if item.deploy_sha %} · code {{ item.deploy_sha | short: 8 | code }}{% else %} · added together with the next migration{% endif %}"
+      value: "{{ item.revision }}"
+      disabled: item.deployable == false
+  - id: seed
+    type: confirm
+    label: Also run the seed scripts
+submit: Deploy
+cancel: Cancel the deployment

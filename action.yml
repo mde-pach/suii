@@ -1,0 +1,96 @@
+name: suii
+description: Step User Interactive Input. Pause a step, ask people a question through a GitHub issue, and get their answer as outputs.
+author: mde-pach
+branding:
+  icon: check-square
+  color: blue
+
+inputs:
+  template:
+    description: Path to a suii template (YAML), relative to the workspace, or the template itself as inline YAML.
+    required: true
+  data:
+    description: JSON made available to the template as `data`.
+    required: false
+    default: "{}"
+  data-file:
+    description: Path to a JSON file made available to the template as `data`. Takes precedence over `data`.
+    required: false
+  vars:
+    description: Extra `key=value` lines made available to the template as `vars`.
+    required: false
+  timeout:
+    description: Seconds to wait for an answer. Keep it below the step's `timeout-minutes`.
+    required: false
+    default: "900"
+  poll-interval:
+    description: Seconds between two checks of the issue.
+    required: false
+    default: "10"
+  min-permission:
+    description: Minimum repository role to answer (read, triage, write, maintain, admin).
+    required: false
+    default: write
+  allowed-users:
+    description: Comma or newline separated logins allowed to answer. Empty means anyone with `min-permission`.
+    required: false
+  allowed-teams:
+    description: Comma or newline separated `org/team-slug` allowed to answer. Needs a token that can read team membership.
+    required: false
+  forbid-self:
+    description: When true, the user who triggered the run cannot answer (four-eyes rule).
+    required: false
+    default: "false"
+  assignees:
+    description: Comma or newline separated logins to assign to the issue, so they get notified.
+    required: false
+  labels:
+    description: Comma or newline separated extra labels for the issue.
+    required: false
+  issue-repo:
+    description: "`owner/repo` where the issue is created. Defaults to the current repository."
+    required: false
+  on-timeout:
+    description: "`fail` (default) or `default`: use each field's default value when nobody answered."
+    required: false
+    default: fail
+  on-cancel:
+    description: "`fail` (default) or `continue`: succeed with status=cancelled so later steps can branch."
+    required: false
+    default: fail
+  on-empty:
+    description: "`skip` (default): succeed with status=empty and create no issue when a required field has no options. `fail`: fail instead."
+    required: false
+    default: skip
+  max-reverts:
+    description: Rejected edits tolerated before giving up with status=contested.
+    required: false
+    default: "5"
+  lock:
+    description: Lock the issue conversation once it is closed.
+    required: false
+    default: "true"
+  github-token:
+    description: Token used to create and watch the issue. Needs `issues:write` on `issue-repo`.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  status:
+    description: answered, defaulted, cancelled, expired, contested, empty or error.
+  values:
+    description: JSON object with every field's value, keyed by field id.
+  responder:
+    description: Login of the person who submitted the answer.
+  answered-at:
+    description: ISO timestamp of the accepted answer.
+  issue-number:
+    description: Number of the issue that was created.
+  issue-url:
+    description: URL of the issue that was created.
+
+runs:
+  using: node24
+  main: dist/main.js
+  post: dist/post.js
+  post-if: always()

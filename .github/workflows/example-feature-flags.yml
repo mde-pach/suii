@@ -1,0 +1,51 @@
+# Example: pick several items from a generated list (multi), with a min and a max.
+name: "Example: enable feature flags"
+
+on:
+  workflow_dispatch:
+    inputs:
+      timeout:
+        description: Seconds to wait for an answer
+        default: "3600"
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  flags:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: List flags (simulated)
+        run: |
+          cat > flags.json <<'EOF'
+          {"flags": [
+            {"key": "new-checkout", "description": "One-page checkout", "owner": "payments", "enabled": false},
+            {"key": "dark-mode", "description": "Dark theme", "owner": "web", "enabled": true},
+            {"key": "smart-search", "description": "Typo-tolerant search", "owner": "search", "enabled": false},
+            {"key": "bulk-export", "description": "CSV export of orders", "owner": "ops", "enabled": false},
+            {"key": "gift-cards", "description": "Gift cards at checkout", "owner": "payments", "enabled": false}
+          ]}
+          EOF
+
+      - name: Which flags?
+        id: ask
+        uses: ./
+        with:
+          template: .github/suii/feature-flags.yml
+          data-file: flags.json
+          vars: environment=production
+          timeout: ${{ inputs.timeout }}
+          assignees: ${{ github.actor }}
+
+      - name: Enable them
+        env:
+          FLAGS: ${{ steps.ask.outputs.flags }}
+          PCT: ${{ steps.ask.outputs.percentage }}
+        run: |
+          echo "Enabling for $PCT% of users:"
+          echo "$FLAGS" | jq -r '.[]'

@@ -1,0 +1,17 @@
+# Sort open issues into groups by dragging them under a heading.
+title: "Weekly triage: {{ data.issues | size }} open issues"
+intro: Drag each issue under the group it belongs to, then tick **Apply**. suii labels them accordingly.
+fields:
+  - id: triage
+    type: buckets
+    label: Issues
+    buckets:
+      - { id: this-week, label: This week }
+      - { id: backlog, label: Backlog }
+      - { id: close, label: Close }
+    options:
+      from: data.issues
+      label: "{{ item.title }} {{ item.number | prepend: '#' | code }}"
+      value: "{{ item.number }}"
+      bucket: backlog
+submit: Apply

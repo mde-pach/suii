@@ -1,0 +1,80 @@
+# Copy to .github/workflows/deploy.yml in your application repository,
+# with migration_plan.py in scripts/ and the template in .github/suii/choose-migration.yml.
+#
+# 1. `choose` computes pending migrations with a read-only DB user and asks with suii.
+# 2. `deploy` waits for the `production` environment's reviewers (who see the choice),
+#    re-checks the revision against the live database, migrates and deploys that code.
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  choose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    outputs:
+      revision: ${{ steps.ask.outputs.revision }}
+      seed: ${{ steps.ask.outputs.seed }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # needed to find the commit that added each migration
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Compute the migration plan
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_READONLY }}
+        run: python scripts/migration_plan.py plan --json > plan.json
+      - name: Ask which migration to stop at
+        id: ask
+        uses: mde-pach/suii@v1
+        with:
+          template: .github/suii/choose-migration.yml
+          data-file: plan.json
+          vars: environment=production
+          timeout: 900
+          forbid-self: true
+
+  deploy:
+    needs: choose
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Re-check the revision and resolve its commit
+        id: resolve
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TARGET: ${{ needs.choose.outputs.revision }}
+        run: python scripts/migration_plan.py resolve "$TARGET"
+      - name: Check out the code for that migration
+        env:
+          SHA: ${{ steps.resolve.outputs.sha }}
+        run: git checkout --detach "$SHA"
+      - run: pip install -r requirements.txt
+      - name: Migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TARGET: ${{ needs.choose.outputs.revision }}
+        run: alembic upgrade "$TARGET"
+      - name: Deploy
+        env:
+          SHA: ${{ steps.resolve.outputs.sha }}
+        run: echo "Deploying $SHA"  # your deploy command here
