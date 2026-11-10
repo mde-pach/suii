@@ -51,7 +51,7 @@ A single checkbox. With `required: true` it must be ticked before the answer is 
 
 ## `rank`
 
-People drag the items into order with the ⠿ handle GitHub shows to the left of each checkbox. Ticking these boxes does nothing. With `top: 3`, only the first three are output.
+People drag the items into order with the ⠿ handle GitHub shows to the left of each checkbox. GitHub only lets a line be dragged when it has a checkbox, so the boxes are there, but they cannot be ticked: suii unticks them at once. With `top: 3`, only the first three are output.
 
 ```yaml
 - id: regions

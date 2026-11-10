@@ -41,6 +41,6 @@ suii keeps the layout of the issue it rendered: which line is which option, in w
 - each checkbox list (a `choice`, `multi` or `confirm` field, and the Submit / Cancel list) is read for its marks;
 - the list of a `rank` or `buckets` field is read for its order.
 
-GitHub lets anyone who can edit an issue drag any task-list item, Submit included, and there is no way to turn that off. So in a checkbox list the order is simply ignored: dragging "Production" above "Staging", or Cancel above Submit, changes nothing and triggers nothing. Order only means something in `rank` and `buckets` fields, where it is the answer.
+In a checkbox list the order is ignored: dragging "Production" above "Staging", or Cancel above Submit, changes nothing and triggers nothing. Order only means something in `rank` and `buckets` fields, where it is the answer. Conversely, the boxes on `rank` and `buckets` lines only exist because GitHub needs a checkbox to make a line draggable: suii unticks them as soon as they are ticked, without a comment.
 
 What every list must keep is its own lines. An added option, a reworded label, or a line dragged into another list is tampering: the edit is reverted. After `max-reverts` rejected edits, suii gives up with `status=contested`.

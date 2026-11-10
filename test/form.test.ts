@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canonical,
+  clearStrayTicks,
   defaultValues,
   evaluate,
   freezeBody,
@@ -143,9 +144,16 @@ describe('reading answers', () => {
     expect(evaluate(form, readForm(b, layout)).errors.join(' ')).toMatch(/above the first group/);
   });
 
-  it('ignores ticks in rank lists and fake checkboxes in static text', () => {
-    const b = tick(body, 'eu');
-    expect(evaluate(form, readForm(b, layout)).values.order).toEqual(['eu', 'us']);
+  it('counts ticks on draggable-only lines as stray, and clears only those', () => {
+    let b = tick(body, 'eu');
+    b = tick(b, 'Bug 1');
+    b = tick(b, 'Staging');
+    const state = readForm(b, layout);
+    expect(state.strayTicks).toBe(2);
+    expect(evaluate(form, state).values.order).toEqual(['eu', 'us']);
+    const cleared = readForm(clearStrayTicks(b, layout), layout);
+    expect(cleared.strayTicks).toBe(0);
+    expect(evaluate(form, cleared).values.target).toBe('staging');
   });
 });
 

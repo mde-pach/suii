@@ -2,6 +2,7 @@
 import { sameLogin, type Edit, type IssueApi } from './api.js';
 import type { Authorizer } from './auth.js';
 import {
+  clearStrayTicks,
   defaultValues,
   evaluate,
   normalizeLines,
@@ -181,6 +182,13 @@ export async function runEngine(o: EngineOptions): Promise<EngineResult> {
     }
 
     accept(issue.body);
+    if (state.strayTicks > 0) {
+      // Boxes on draggable-only lines cannot be ticked: clear them, silently.
+      const cleared = clearStrayTicks(accepted, layout);
+      await api.updateIssue(n, { body: cleared });
+      accept(cleared);
+      etag = undefined;
+    }
     const lastEditor = [...edits].sort((a, b) => Date.parse(a.editedAt) - Date.parse(b.editedAt)).at(-1)!.editor!;
     for (const e of edits) if (e.editor) contributors.add(e.editor);
 

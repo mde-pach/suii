@@ -37139,9 +37139,9 @@ function hint(field) {
     case "confirm":
       return field.required ? "Must be ticked" : "Optional";
     case "rank":
-      return field.top ? `Drag the \u283F handle to reorder \xB7 the top ${field.top} count \xB7 ticking does nothing` : "Drag the \u283F handle to reorder \xB7 ticking does nothing";
+      return field.top ? `Drag the \u283F handle to reorder \xB7 the top ${field.top} count \xB7 these boxes cannot be ticked` : "Drag the \u283F handle to reorder \xB7 these boxes cannot be ticked";
     case "buckets":
-      return "Drag each item under the group it belongs to \xB7 ticking does nothing";
+      return "Drag each item under the group it belongs to \xB7 these boxes cannot be ticked";
   }
 }
 function fmtTime(d) {
@@ -37272,12 +37272,14 @@ function readForm(body, layout) {
   }
   const checks = /* @__PURE__ */ new Map();
   const groups = /* @__PURE__ */ new Map();
+  let strayTicks = 0;
   let i = 0;
   for (const entry of layout) {
     if (entry.kind === "group") {
       const current = lines.slice(i, i + entry.lines.length);
       const matched = matchList(current, entry.lines.map((l) => ({ text: l.text, value: l.ref })), i, `field \`${entry.field}\``);
       groups.set(entry.field, matched.map((m) => m.value));
+      strayTicks += current.filter(isChecked).length;
       i += entry.lines.length;
       continue;
     }
@@ -37291,9 +37293,22 @@ function readForm(body, layout) {
     if (canonical(lines[i] ?? "") !== canonical(entry.text)) {
       throw new TamperError(`line ${i + 1} was changed`);
     }
+    if (isChecked(lines[i] ?? "")) strayTicks++;
     i++;
   }
-  return { checks, groups };
+  return { checks, groups, strayTicks };
+}
+function clearStrayTicks(body, layout) {
+  const lines = normalizeLines(body);
+  let i = 0;
+  for (const entry of layout) {
+    const n = entry.kind === "static" ? 1 : entry.lines.length;
+    if (entry.kind !== "set") {
+      for (let k = i; k < i + n; k++) if (lines[k] !== void 0) lines[k] = canonical(lines[k]);
+    }
+    i += n;
+  }
+  return lines.join("\n") + "\n";
 }
 function setCheck(body, layout, role, checked) {
   const lines = normalizeLines(body);
@@ -37553,6 +37568,12 @@ async function runEngine(o) {
       continue;
     }
     accept(issue2.body);
+    if (state.strayTicks > 0) {
+      const cleared = clearStrayTicks(accepted, layout);
+      await api.updateIssue(n, { body: cleared });
+      accept(cleared);
+      etag = void 0;
+    }
     const lastEditor = [...edits].sort((a, b) => Date.parse(a.editedAt) - Date.parse(b.editedAt)).at(-1).editor;
     for (const e of edits) if (e.editor) contributors.add(e.editor);
     const ev = evaluate(form, state);

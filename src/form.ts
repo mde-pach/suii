@@ -42,6 +42,12 @@ export interface Meta {
 export interface FormState {
   checks: Map<string, boolean>;
   groups: Map<string, GroupRef[]>;
+  /**
+   * Ticked boxes that carry no meaning: rank / buckets lines (the box only exists
+   * because GitHub needs one to drag a line) and any checkbox in static text.
+   * suii unticks them, so they cannot stay ticked.
+   */
+  strayTicks: number;
 }
 
 export class TamperError extends Error {
@@ -101,10 +107,10 @@ function hint(field: Field): string {
       return field.required ? 'Must be ticked' : 'Optional';
     case 'rank':
       return field.top
-        ? `Drag the ⠿ handle to reorder · the top ${field.top} count · ticking does nothing`
-        : 'Drag the ⠿ handle to reorder · ticking does nothing';
+        ? `Drag the ⠿ handle to reorder · the top ${field.top} count · these boxes cannot be ticked`
+        : 'Drag the ⠿ handle to reorder · these boxes cannot be ticked';
     case 'buckets':
-      return 'Drag each item under the group it belongs to · ticking does nothing';
+      return 'Drag each item under the group it belongs to · these boxes cannot be ticked';
   }
 }
 
@@ -270,12 +276,14 @@ export function readForm(body: string, layout: Layout): FormState {
   }
   const checks = new Map<string, boolean>();
   const groups = new Map<string, GroupRef[]>();
+  let strayTicks = 0;
   let i = 0;
   for (const entry of layout) {
     if (entry.kind === 'group') {
       const current = lines.slice(i, i + entry.lines.length);
       const matched = matchList(current, entry.lines.map((l) => ({ text: l.text, value: l.ref })), i, `field \`${entry.field}\``);
       groups.set(entry.field, matched.map((m) => m.value));
+      strayTicks += current.filter(isChecked).length;
       i += entry.lines.length;
       continue;
     }
@@ -289,9 +297,24 @@ export function readForm(body: string, layout: Layout): FormState {
     if (canonical(lines[i] ?? '') !== canonical(entry.text)) {
       throw new TamperError(`line ${i + 1} was changed`);
     }
+    if (isChecked(lines[i] ?? '')) strayTicks++;
     i++;
   }
-  return { checks, groups };
+  return { checks, groups, strayTicks };
+}
+
+/** Return `body` with every meaningless tick cleared (see FormState.strayTicks). */
+export function clearStrayTicks(body: string, layout: Layout): string {
+  const lines = normalizeLines(body);
+  let i = 0;
+  for (const entry of layout) {
+    const n = entry.kind === 'static' ? 1 : entry.lines.length;
+    if (entry.kind !== 'set') {
+      for (let k = i; k < i + n; k++) if (lines[k] !== undefined) lines[k] = canonical(lines[k]!);
+    }
+    i += n;
+  }
+  return lines.join('\n') + '\n';
 }
 
 /** Return `body` with one checkbox set or cleared (used to untick Submit). */

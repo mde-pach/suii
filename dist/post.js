@@ -24731,12 +24731,14 @@ function readForm(body, layout) {
   }
   const checks = /* @__PURE__ */ new Map();
   const groups = /* @__PURE__ */ new Map();
+  let strayTicks = 0;
   let i = 0;
   for (const entry of layout) {
     if (entry.kind === "group") {
       const current = lines.slice(i, i + entry.lines.length);
       const matched = matchList(current, entry.lines.map((l) => ({ text: l.text, value: l.ref })), i, `field \`${entry.field}\``);
       groups.set(entry.field, matched.map((m) => m.value));
+      strayTicks += current.filter(isChecked).length;
       i += entry.lines.length;
       continue;
     }
@@ -24750,9 +24752,10 @@ function readForm(body, layout) {
     if (canonical(lines[i] ?? "") !== canonical(entry.text)) {
       throw new TamperError(`line ${i + 1} was changed`);
     }
+    if (isChecked(lines[i] ?? "")) strayTicks++;
     i++;
   }
-  return { checks, groups };
+  return { checks, groups, strayTicks };
 }
 var STATUS_TEXT = {
   answered: { alert: "TIP", title: "Answered" },
