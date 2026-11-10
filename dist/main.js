@@ -37369,17 +37369,13 @@ function freezeBody(body, layout, status, detail) {
   let i = 0;
   for (const entry of layout) {
     if (entry.kind === "group") {
+      const isBuckets = entry.lines.some((l) => l.ref.kind === "bucket");
       let rank2 = 0;
       for (let k = 0; k < entry.lines.length; k++, i++) {
         const line2 = canonical(lines[i] ?? "");
         const text = line2.replace(/^(\s*)[-*+]\s+\[ \]\s?/, "");
-        if (text.startsWith("**\u25B8 ")) {
-          rank2 = 0;
-          out.push(`- ${text}`);
-        } else {
-          rank2++;
-          out.push(`${rank2}. ${text}`);
-        }
+        if (isBuckets) out.push(text.startsWith("**\u25B8 ") ? `- ${text}` : `  - ${text}`);
+        else out.push(`${++rank2}. ${text}`);
       }
       continue;
     }

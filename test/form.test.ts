@@ -206,7 +206,8 @@ describe('helpers', () => {
     expect(frozen).toContain('- ✅ Production');
     expect(frozen).toContain('- ⬜ Staging');
     expect(frozen).toContain('1. eu');
-    expect(frozen).toContain('- **▸ Later**');
+    expect(frozen).toContain('2. us');
+    expect(frozen).toContain('- **▸ Later**\n  - Bug 2');
     expect(frozen).not.toContain('[ ]');
     expect(frozen).not.toContain('**Submit**');
     expect(frozen).not.toContain('<sub>Tick');

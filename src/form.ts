@@ -384,17 +384,14 @@ export function freezeBody(
   let i = 0;
   for (const entry of layout) {
     if (entry.kind === 'group') {
+      // rank: a numbered list; buckets: items nested under their group heading.
+      const isBuckets = entry.lines.some((l) => l.ref.kind === 'bucket');
       let rank = 0;
       for (let k = 0; k < entry.lines.length; k++, i++) {
         const line = canonical(lines[i] ?? '');
         const text = line.replace(/^(\s*)[-*+]\s+\[ \]\s?/, '');
-        if (text.startsWith('**▸ ')) {
-          rank = 0;
-          out.push(`- ${text}`);
-        } else {
-          rank++;
-          out.push(`${rank}. ${text}`);
-        }
+        if (isBuckets) out.push(text.startsWith('**▸ ') ? `- ${text}` : `  - ${text}`);
+        else out.push(`${++rank}. ${text}`);
       }
       continue;
     }
