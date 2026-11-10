@@ -61,6 +61,9 @@ jobs:
     needs: choose
     runs-on: ubuntu-latest
     steps:
-      - env:
+      - name: Migrate and deploy (simulated)
+        env:
           REVISION: ${{ needs.choose.outputs.revision }}
-        run: echo "alembic upgrade $REVISION  # then deploy the matching code"
+        run: |
+          echo "alembic upgrade $REVISION"
+          echo "then deploy the code that matches $REVISION"
